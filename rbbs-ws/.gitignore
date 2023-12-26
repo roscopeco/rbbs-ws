@@ -6,3 +6,5 @@ Makefile
 _deps
 cmake_install.cmake
 rbbs-ws
+build
+.vscode
