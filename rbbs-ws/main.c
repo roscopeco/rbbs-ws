@@ -1,3 +1,9 @@
+/*
+ * rbbs-ws 
+ *
+ * Copyright (c)2023 Ross Bamford & Contributors
+ * MIT License
+ */
 #include <libwebsockets.h>
 #include <string.h>
 #include <stdio.h>

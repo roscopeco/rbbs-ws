@@ -16,12 +16,17 @@ FetchContent_MakeAvailable(Libwebsockets)
 
 include(FindOpenSSL)
 
-add_executable(rbbs-ws main.c)
-add_dependencies(websockets_shared websockets)
+add_executable(rbbs-ws main.c buffer.c)
 add_dependencies(rbbs-ws websockets_shared)
 
 target_include_directories(rbbs-ws PRIVATE "${libwebsockets_SOURCE_DIR}/include")
 target_include_directories(rbbs-ws PRIVATE "${libwebsockets_BINARY_DIR}")
 target_include_directories(rbbs-ws PRIVATE "${OPENSSL_INCLUDE_DIR}")
+target_include_directories(rbbs-ws PRIVATE "include")
 target_link_libraries(rbbs-ws PRIVATE websockets_shared)
 
+SET_TARGET_PROPERTIES(websockets PROPERTIES EXCLUDE_FROM_ALL True)
+SET_TARGET_PROPERTIES(test-lejp PROPERTIES EXCLUDE_FROM_ALL True)
+SET_TARGET_PROPERTIES(test-client PROPERTIES EXCLUDE_FROM_ALL True)
+SET_TARGET_PROPERTIES(test-server PROPERTIES EXCLUDE_FROM_ALL True)
+SET_TARGET_PROPERTIES(test-server-extpoll PROPERTIES EXCLUDE_FROM_ALL True)
