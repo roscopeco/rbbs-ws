@@ -39,6 +39,8 @@ static char* device;
 static unsigned char ch[LWS_PRE + OUT_BUFFER_SIZE];
 static int chptr;
 
+static unsigned char busy[LWS_PRE + 4];
+
 struct lws_context *context;
 
 #ifdef INPUT_CR_TO_CRLF
@@ -89,15 +91,24 @@ static int callback_serial(struct lws *wsi, enum lws_callback_reasons reason, UN
                     debugf("Establish on new connection; Denying\n");
                 }
 
-                return -1;
+                lws_callback_on_writable(wsi_global);
+
+                break;
             }
+
             debugf("WebSocket connection established\n");
             wsi_global = wsi;
             break;
 
         case LWS_CALLBACK_SERVER_WRITEABLE:
+            if (wsi != wsi_global) {
+                lws_write(wsi, busy, 4, LWS_WRITE_BINARY);
+                return -1;
+            }
+
             lws_write(wsi, out_buffer_ptr(), out_buffer_len(), LWS_WRITE_BINARY);
             reset_out_buffer();
+
             break;
 
         case LWS_CALLBACK_RECEIVE:
@@ -226,6 +237,8 @@ static struct lws_protocols protocols[] = {
 
 
 int main(int argc, char** argv) {
+    memcpy(&busy[LWS_PRE], "BUSY", 4);
+
     int result = 0;
 
     if (argc < 2) {
