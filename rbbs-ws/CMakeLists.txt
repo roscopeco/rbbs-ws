@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.10)
 project(rbbs-ws VERSION 1.0.0)
 
 cmake_policy(SET CMP0024 OLD)
@@ -37,4 +37,4 @@ else()
   target_compile_options(rbbs-ws PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 
-set_property(TARGET rbbs-ws PROPERTY C_STANDARD 17)
+set_property(TARGET rbbs-ws PROPERTY C_STANDARD 11)
