@@ -16,7 +16,7 @@ RingBuffer* create_ring_buffer(size_t size) {
         return NULL;
     }
 
-    ring_buffer->buffer = (int*)malloc(size * sizeof(int));
+    ring_buffer->buffer = (unsigned char*)malloc(size * sizeof(unsigned char));
     if (ring_buffer->buffer == NULL) {
         // Handle memory allocation failure
         free(ring_buffer);

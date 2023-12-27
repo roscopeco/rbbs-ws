@@ -30,3 +30,11 @@ SET_TARGET_PROPERTIES(test-lejp PROPERTIES EXCLUDE_FROM_ALL True)
 SET_TARGET_PROPERTIES(test-client PROPERTIES EXCLUDE_FROM_ALL True)
 SET_TARGET_PROPERTIES(test-server PROPERTIES EXCLUDE_FROM_ALL True)
 SET_TARGET_PROPERTIES(test-server-extpoll PROPERTIES EXCLUDE_FROM_ALL True)
+
+if(MSVC)
+  target_compile_options(rbbs-ws PRIVATE /W4 /WX)
+else()
+  target_compile_options(rbbs-ws PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+
+set_property(TARGET rbbs-ws PROPERTY C_STANDARD 17)

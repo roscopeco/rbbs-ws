@@ -11,7 +11,7 @@
 #include <stdlib.h>
 
 typedef struct {
-    int* buffer;
+    unsigned char* buffer;
     size_t size;
     size_t start;
     size_t end;

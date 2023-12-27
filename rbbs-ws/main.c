@@ -4,24 +4,39 @@
  * Copyright (c)2023 Ross Bamford & Contributors
  * MIT License
  */
-#include <libwebsockets.h>
-#include <string.h>
 #include <stdio.h>
+#include <stdbool.h>
+#include <string.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <termios.h>
 #include <errno.h>
+#include <libwebsockets.h>
+
+#include "buffer.h"
 
 #define LOCAL_PRINT
 #define DEBUG
 //#define INPUT_CR_TO_CRLF
 
+#define BAUD_RATE       B9600
+
+#define INLINE inline __attribute__((always_inline))
+#define UNUSED __attribute__((unused))
+
 static struct lws *wsi_global;
-static unsigned char buf[LWS_PRE + 40];
-static unsigned char ch[LWS_PRE + 1];
-int serial;
+static int serial;
+static RingBuffer *from_ws_buf;
+
+// UART to WS buffer doesn't use a RingBuffer, since we need to keep the 
+// LWS_PRE preamble for the websocket write anyway we may as well just 
+// keep a buffer after that. We don't bother treating it as a ring buffer,
+// if we can't send within the time it takes to fill, something is wrong anyhow...
+#define OUT_BUFFER_SIZE     256
+static unsigned char ch[LWS_PRE + OUT_BUFFER_SIZE];
+static int chptr;
 
 struct lws_context *context;
 
@@ -41,8 +56,29 @@ static char lf[LWS_PRE + 1];
 #define local_printf(...)   ((0))
 #endif
 
-static int callback_serial(struct lws *wsi, enum lws_callback_reasons reason,
-        void *user, void *in, size_t len) {
+static INLINE unsigned char *out_buffer_ptr(void) {
+    return &ch[LWS_PRE];
+}
+
+static INLINE size_t out_buffer_len(void) {
+    return chptr - LWS_PRE;
+}
+
+static INLINE bool out_buffer(unsigned char inch) {
+    if (chptr < (LWS_PRE + OUT_BUFFER_SIZE)) {
+        // only buffer if we have a socket...
+        ch[chptr++] = inch;
+        return true;
+    } else {
+        return false;
+    }
+}
+
+static INLINE void reset_out_buffer(void) {
+    chptr = LWS_PRE;
+}
+
+static int callback_serial(struct lws *wsi, enum lws_callback_reasons reason, UNUSED void *user, void *in, size_t len) {
     switch (reason) {
         case LWS_CALLBACK_ESTABLISHED:
             if (wsi_global) {
@@ -59,7 +95,8 @@ static int callback_serial(struct lws *wsi, enum lws_callback_reasons reason,
             break;
 
         case LWS_CALLBACK_SERVER_WRITEABLE:
-            lws_write(wsi, &ch[LWS_PRE], 1, LWS_WRITE_TEXT);
+            lws_write(wsi, out_buffer_ptr(), out_buffer_len(), LWS_WRITE_BINARY);
+            reset_out_buffer();
             break;
 
         case LWS_CALLBACK_RECEIVE:
@@ -121,7 +158,11 @@ static int set_serial(int fd, int speed) {
     return 0;
 }
 
-static void cleanup() {
+static void cleanup(void) {
+    if (from_ws_buf) {
+        destroy_ring_buffer(from_ws_buf);
+    }
+
     if (serial) {
         close(serial);
     }
@@ -132,8 +173,8 @@ static void cleanup() {
 }
 
 static struct lws_protocols protocols[] = {
-    {"serial-protocol", callback_serial, 0, 0},
-    {NULL, NULL, 0, 0}};
+    {"serial-protocol", callback_serial, 0, 0, 0, NULL, 0},
+    {NULL, NULL, 0, 0, 0, NULL, 0}};
 
 int main(int argc, char** argv) {
     int result = 0;
@@ -146,18 +187,27 @@ int main(int argc, char** argv) {
     serial = open(argv[1], O_RDWR | O_NOCTTY | O_SYNC);
 
     if (serial < 0) {
-        fprintf(stderr, "Failed to open serial device '%s'\n", argv[1]);
+        fprintf(stderr, "Failed to open serial device '%s' (%s)\n", argv[1], strerror(errno));
         result = 1;
         goto done;
     }
 
-    if (set_serial(serial, B115200) < 0) {
-        fprintf(stderr, "Failed to setup serial device '%s'\n", argv[1]);
+    if (set_serial(serial, BAUD_RATE) < 0) {
+        fprintf(stderr, "Failed to setup serial device '%s' (%s)\n", argv[1], strerror(errno));
         result = 2;
         goto done;
     }
 
     debugf("Serial device '%s' opened successfully...\n", argv[1]);
+
+    reset_out_buffer();
+    from_ws_buf = create_ring_buffer(256);
+
+    if (from_ws_buf == NULL) {
+        fprintf(stderr, "Failed to allocate ring buffers\n");
+        result = 3;
+        goto done;
+    }
 
 #ifdef INPUT_CR_TO_CRLF
     lf[LWS_PRE] = 0xa;
@@ -174,7 +224,7 @@ int main(int argc, char** argv) {
 
     if (!context) {
         fprintf(stderr, "WebSocket context creation failed\n");
-        result = 3;
+        result = 4;
         goto done;
     }
 
@@ -185,7 +235,7 @@ int main(int argc, char** argv) {
 #endif
 
     fd_set rd;
-    struct timeval tv = {0, 0};     // instant timeout to keep looping...
+    struct timeval tv = {1, 0};     // instant timeout to keep looping...
     int err;
 
     while (1) {
@@ -212,13 +262,21 @@ int main(int argc, char** argv) {
             goto done;
         } else {
             // hoorah!
-            if (read(serial, &ch[LWS_PRE], 1) != 1) {
+            unsigned char read_ch;
+            
+            if (read(serial, &read_ch, 1) != 1) {
                 // read fail
                 fprintf(stderr, "Read fail on serial\n");
                 result = 5;
                 goto done;
             } else {
-                if (wsi_global) { 
+                if (wsi_global) {
+                    if (!out_buffer(read_ch)) {
+                        fprintf(stderr, "Out buffer overflow; Websocket connection may be broken\n");
+                        result = 6;
+                        goto done;
+                    }
+                    
                     lws_callback_on_writable(wsi_global);
                     local_printf("\x1B[31m%c\x1B[0m", ch[LWS_PRE]);
                 } else {
