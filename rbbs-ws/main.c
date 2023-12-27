@@ -39,7 +39,9 @@ static char* device;
 static unsigned char ch[LWS_PRE + OUT_BUFFER_SIZE];
 static int chptr;
 
-static unsigned char busy[LWS_PRE + 4];
+#define BUSY_STR            "BUSY\n\n"
+#define BUSY_LEN            6
+static unsigned char busy_buf[LWS_PRE + 6];
 
 struct lws_context *context;
 
@@ -103,7 +105,7 @@ static int callback_serial(struct lws *wsi, enum lws_callback_reasons reason, UN
         case LWS_CALLBACK_SERVER_WRITEABLE:
             if (wsi_global) {
                 if (wsi != wsi_global) {
-                    lws_write(wsi, busy, 4, LWS_WRITE_BINARY);
+                    lws_write(wsi, &busy_buf[LWS_PRE], BUSY_LEN, LWS_WRITE_BINARY);
                     return -1;
                 }
 
@@ -245,7 +247,7 @@ static struct lws_protocols protocols[] = {
 
 
 int main(int argc, char** argv) {
-    memcpy(&busy[LWS_PRE], "BUSY", 4);
+    memcpy(&busy_buf[LWS_PRE], BUSY_STR, BUSY_LEN);
 
     int result = 0;
 
