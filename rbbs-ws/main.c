@@ -39,6 +39,10 @@ static char* device;
 static unsigned char ch[LWS_PRE + OUT_BUFFER_SIZE];
 static int chptr;
 
+#define BUSY_STR            "BUSY\n\n"
+#define BUSY_LEN            6
+static unsigned char busy_buf[LWS_PRE + 6];
+
 struct lws_context *context;
 
 #ifdef INPUT_CR_TO_CRLF
@@ -67,7 +71,7 @@ static INLINE size_t out_buffer_len(void) {
 
 static INLINE bool out_buffer(unsigned char inch) {
     if (chptr < (LWS_PRE + OUT_BUFFER_SIZE)) {
-        // only buffer if we have a socket...
+        // only buffer if we have room...
         ch[chptr++] = inch;
         return true;
     } else {
@@ -89,22 +93,37 @@ static int callback_serial(struct lws *wsi, enum lws_callback_reasons reason, UN
                     debugf("Establish on new connection; Denying\n");
                 }
 
-                return -1;
+                lws_callback_on_writable(wsi);
+
+                break;
             }
+
             debugf("WebSocket connection established\n");
             wsi_global = wsi;
             break;
 
         case LWS_CALLBACK_SERVER_WRITEABLE:
-            lws_write(wsi, out_buffer_ptr(), out_buffer_len(), LWS_WRITE_BINARY);
-            reset_out_buffer();
+            if (wsi_global) {
+                if (wsi != wsi_global) {
+                    lws_write(wsi, &busy_buf[LWS_PRE], BUSY_LEN, LWS_WRITE_BINARY);
+                    return -1;
+                }
+
+                lws_write(wsi, out_buffer_ptr(), out_buffer_len(), LWS_WRITE_BINARY);
+                reset_out_buffer();
+            }
+
             break;
 
         case LWS_CALLBACK_RECEIVE:
 
-            lws_write(wsi, in, len, LWS_WRITE_TEXT);
+            // lws_write(wsi, in, len, LWS_WRITE_TEXT);
+
+            // TODO this should be buffered and check we can write first!
+            write(serial, in, len);
 
 #ifdef INPUT_CR_TO_CRLF
+            write(serial, &lf[LWS_PRE], 1);
             if (((char*)(in))[0] == 0xd) {
                 printf("CR\n");
                 lws_write(wsi, &lf[LWS_PRE], 1, LWS_WRITE_TEXT);
@@ -114,8 +133,14 @@ static int callback_serial(struct lws *wsi, enum lws_callback_reasons reason, UN
             break;
 
         case LWS_CALLBACK_CLOSED:
-            debugf("WebSocket connection closed\n");
-            wsi_global = NULL;
+            if (wsi == wsi_global) {
+                debugf("Main WebSocket connection closed\n");
+                wsi_global = NULL;
+                reset_out_buffer();
+            } else {
+                debugf("Busy WebSocket connection closed\n");
+            }
+
             break;
 
         default:
@@ -226,6 +251,8 @@ static struct lws_protocols protocols[] = {
 
 
 int main(int argc, char** argv) {
+    memcpy(&busy_buf[LWS_PRE], BUSY_STR, BUSY_LEN);
+
     int result = 0;
 
     if (argc < 2) {
