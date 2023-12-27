@@ -117,9 +117,13 @@ static int callback_serial(struct lws *wsi, enum lws_callback_reasons reason, UN
 
         case LWS_CALLBACK_RECEIVE:
 
-            lws_write(wsi, in, len, LWS_WRITE_TEXT);
+            // lws_write(wsi, in, len, LWS_WRITE_TEXT);
+
+            // TODO this should be buffered and check we can write first!
+            write(serial, in, len);
 
 #ifdef INPUT_CR_TO_CRLF
+            write(serial, &lf[LWS_PRE], 1);
             if (((char*)(in))[0] == 0xd) {
                 printf("CR\n");
                 lws_write(wsi, &lf[LWS_PRE], 1, LWS_WRITE_TEXT);
