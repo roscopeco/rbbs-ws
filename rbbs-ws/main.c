@@ -331,9 +331,9 @@ int main(int argc, char** argv) {
                     }
                     
                     lws_callback_on_writable(wsi_global);
-                    local_printf("\x1B[31m%c\x1B[0m", read_ch);
-                } else {
                     local_printf("\x1B[32m%c\x1B[0m", read_ch);
+                } else {
+                    local_printf("\x1B[31m%c\x1B[0m", read_ch);
                 }
             }
         }
