@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
+#include <ctype.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <fcntl.h>
@@ -21,14 +22,14 @@
 #define DEBUG
 //#define INPUT_CR_TO_CRLF
 
-#define BAUD_RATE       B9600
-
 #define INLINE inline __attribute__((always_inline))
 #define UNUSED __attribute__((unused))
 
 static struct lws *wsi_global;
 static int serial;
 static RingBuffer *from_ws_buf;
+static int baudrate = 115200;
+static char* device;
 
 // UART to WS buffer doesn't use a RingBuffer, since we need to keep the 
 // LWS_PRE preamble for the websocket write anyway we may as well just 
@@ -172,9 +173,57 @@ static void cleanup(void) {
     }
 }
 
+static bool opt_parse(int argc, char** argv) {
+    int c;
+
+    while ((c = getopt(argc, argv, ":b:d:")) != -1) {
+        switch (c) {
+            case 'b':
+                baudrate = atoi(optarg);
+                break;
+            case 'd':
+                device = optarg;
+                break;
+            case '?':
+                if (optopt == 'b' || optopt == 'd') {
+                    fprintf(stderr, "Option -%c requires an argument.\n", optopt);
+                } else if (isprint (optopt)) {
+                    fprintf(stderr, "Unknown option `-%c'.\n", optopt);
+                } else {
+                    fprintf(stderr, "Unknown option character `\\x%x'.\n", optopt);
+                }
+
+                // fallthrough...
+
+            default:
+                return false;
+        }
+    }
+
+    switch (baudrate) {
+        case 9600:
+            baudrate = B9600;
+            break;
+        case 115200:
+            baudrate = B115200;
+            break;
+        default:
+            fprintf(stderr, "Unsupported baudrate %d\n", baudrate);
+            return false;
+    }
+
+    if (!device) {
+        fprintf(stderr, "No device specified - use -d option!\n");
+        return false;
+    }
+
+    return true;
+}
+
 static struct lws_protocols protocols[] = {
     {"serial-protocol", callback_serial, 0, 0, 0, NULL, 0},
     {NULL, NULL, 0, 0, 0, NULL, 0}};
+
 
 int main(int argc, char** argv) {
     int result = 0;
@@ -184,21 +233,25 @@ int main(int argc, char** argv) {
         return 100;
     }
 
-    serial = open(argv[1], O_RDWR | O_NOCTTY | O_SYNC);
+    if (!opt_parse(argc, argv)) {
+        return 255;
+    }
+
+    serial = open(device, O_RDWR | O_NOCTTY | O_SYNC);
 
     if (serial < 0) {
-        fprintf(stderr, "Failed to open serial device '%s' (%s)\n", argv[1], strerror(errno));
+        fprintf(stderr, "Failed to open serial device '%s' (%s)\n", device, strerror(errno));
         result = 1;
         goto done;
     }
 
-    if (set_serial(serial, BAUD_RATE) < 0) {
-        fprintf(stderr, "Failed to setup serial device '%s' (%s)\n", argv[1], strerror(errno));
+    if (set_serial(serial, baudrate) < 0) {
+        fprintf(stderr, "Failed to setup serial device '%s' (%s)\n", device, strerror(errno));
         result = 2;
         goto done;
     }
 
-    debugf("Serial device '%s' opened successfully...\n", argv[1]);
+    debugf("Serial device '%s' opened successfully...\n", device);
 
     reset_out_buffer();
     from_ws_buf = create_ring_buffer(256);
@@ -235,7 +288,7 @@ int main(int argc, char** argv) {
 #endif
 
     fd_set rd;
-    struct timeval tv = {1, 0};     // instant timeout to keep looping...
+    struct timeval tv = {0, 0};     // instant timeout to keep looping...
     int err;
 
     while (1) {
@@ -278,9 +331,9 @@ int main(int argc, char** argv) {
                     }
                     
                     lws_callback_on_writable(wsi_global);
-                    local_printf("\x1B[31m%c\x1B[0m", ch[LWS_PRE]);
+                    local_printf("\x1B[31m%c\x1B[0m", read_ch);
                 } else {
-                    local_printf("\x1B[32m%c\x1B[0m", ch[LWS_PRE]);
+                    local_printf("\x1B[32m%c\x1B[0m", read_ch);
                 }
             }
         }
