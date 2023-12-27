@@ -7,6 +7,8 @@ Internet.
 
 Because what could possibly go wrong?
 
+![screenshot](images/adventure-screenshot.png)
+
 More broadly it'll let you hook up anything that uses serial for IO (and can
 present that serial as a character device on a Unix machine).
 
