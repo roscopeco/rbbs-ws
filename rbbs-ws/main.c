@@ -69,7 +69,7 @@ static INLINE size_t out_buffer_len(void) {
 
 static INLINE bool out_buffer(unsigned char inch) {
     if (chptr < (LWS_PRE + OUT_BUFFER_SIZE)) {
-        // only buffer if we have a socket...
+        // only buffer if we have room...
         ch[chptr++] = inch;
         return true;
     } else {
@@ -91,7 +91,7 @@ static int callback_serial(struct lws *wsi, enum lws_callback_reasons reason, UN
                     debugf("Establish on new connection; Denying\n");
                 }
 
-                lws_callback_on_writable(wsi_global);
+                lws_callback_on_writable(wsi);
 
                 break;
             }
@@ -101,13 +101,15 @@ static int callback_serial(struct lws *wsi, enum lws_callback_reasons reason, UN
             break;
 
         case LWS_CALLBACK_SERVER_WRITEABLE:
-            if (wsi != wsi_global) {
-                lws_write(wsi, busy, 4, LWS_WRITE_BINARY);
-                return -1;
-            }
+            if (wsi_global) {
+                if (wsi != wsi_global) {
+                    lws_write(wsi, busy, 4, LWS_WRITE_BINARY);
+                    return -1;
+                }
 
-            lws_write(wsi, out_buffer_ptr(), out_buffer_len(), LWS_WRITE_BINARY);
-            reset_out_buffer();
+                lws_write(wsi, out_buffer_ptr(), out_buffer_len(), LWS_WRITE_BINARY);
+                reset_out_buffer();
+            }
 
             break;
 
@@ -125,8 +127,14 @@ static int callback_serial(struct lws *wsi, enum lws_callback_reasons reason, UN
             break;
 
         case LWS_CALLBACK_CLOSED:
-            debugf("WebSocket connection closed\n");
-            wsi_global = NULL;
+            if (wsi == wsi_global) {
+                debugf("Main WebSocket connection closed\n");
+                wsi_global = NULL;
+                reset_out_buffer();
+            } else {
+                debugf("Busy WebSocket connection closed\n");
+            }
+
             break;
 
         default:
