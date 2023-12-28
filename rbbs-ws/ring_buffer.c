@@ -5,9 +5,7 @@
  * MIT License
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include "buffer.h"
+#include "ring_buffer.h"
 
 RingBuffer* create_ring_buffer(size_t size) {
     RingBuffer* ring_buffer = (RingBuffer*)malloc(sizeof(RingBuffer));

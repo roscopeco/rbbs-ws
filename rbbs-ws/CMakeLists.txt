@@ -16,7 +16,7 @@ FetchContent_MakeAvailable(Libwebsockets)
 
 include(FindOpenSSL)
 
-add_executable(rbbs-ws main.c buffer.c)
+add_executable(rbbs-ws main.c out_buffer.c ring_buffer.c serial.c opts.c)
 add_dependencies(rbbs-ws websockets_shared)
 
 target_include_directories(rbbs-ws PRIVATE "${libwebsockets_SOURCE_DIR}/include")

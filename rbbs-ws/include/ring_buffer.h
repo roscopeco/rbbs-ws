@@ -5,8 +5,8 @@
  * MIT License
  */
 
-#ifndef RING_BUFFER_H
-#define RING_BUFFER_H
+#ifndef __RBBS_WS_RING_BUFFER_H
+#define __RBBS_WS_RING_BUFFER_H
 
 #include <stdlib.h>
 
@@ -28,4 +28,4 @@ size_t ring_buffer_size(const RingBuffer* ring_buffer);
 int enqueue(RingBuffer* ring_buffer, int value);
 int dequeue(RingBuffer* ring_buffer, int* value);
 
-#endif  // RING_BUFFER_H
+#endif  // _RBBS_WS_RING_BUFFER_H
